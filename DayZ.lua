@@ -31,7 +31,7 @@ end;
 -- @GAME
 
 local gameOffsets = {
-    world = 0x41CEB30,
+    world = 0xF4A0D0,
 
     camera = 0x1B8,
 
@@ -43,7 +43,7 @@ local gameOffsets = {
 
     itemList = 0x2060,
 
-    networkId = 0x6EC,
+    networkId = 0x6E4,
 
     humanType = 0x180,
 
@@ -53,7 +53,7 @@ local gameOffsets = {
 
     cleanName = 0x4F0,
 
-    visualState = 0x1D0,
+    visualState = 0x1C8,
 
     position = 0x2C,
 
@@ -212,7 +212,9 @@ local safeReadString = function(address, size)
     local readValue;
     
     if (proc.is_attached() and address and address ~= 0 and size and size ~= 0) then
-        readValue = proc.read_string(address, size);
+        pcall(function()
+            readValue = proc.read_string(address, size);
+        end);
     end;
 
     return readValue;
