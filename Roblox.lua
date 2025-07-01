@@ -14,6 +14,8 @@ Fonts.ESP = render.create_font("Smallest Pixel.ttf", 10, 400);
 
 Game = { };
 
+Game.Friends = { };
+
 Game.Objects = { };
 
 Game.Aimbot = { };
@@ -25,7 +27,9 @@ Game.Offsets = {
 
     FakeDatamodelToDatamodel = 0x1B8,
 
-    VisualEngine = 0x6535DD8,
+    VisualEngine = 0x65A82C8,
+
+    Sensitivity = 0x67daa34,
 
     LocalPlayer = 0x128,
 
@@ -153,6 +157,8 @@ do
 
     Menu.Elements = { };
 
+    Menu.Buttons = { };
+
     Menu.Colors = { };
 
     Menu.Keybinds = { };
@@ -243,6 +249,10 @@ do
 
     Menu.Elements.AimbotIgnoreTeam = Menu.AimbotPanel:add_checkbox("Ignore Team");
 
+    Menu.Elements.AimbotIgnoreFriends = Menu.AimbotPanel:add_checkbox("Ignore Friends");
+
+    Menu.Elements.AimbotSticky = Menu.AimbotPanel:add_checkbox("Sticky");
+
     Menu.Elements.AimbotHitbox = Menu.AimbotPanel:add_single_select("Hitbox", {"Head", "Body"}, 0);
 
     Menu.Elements.AimbotTarget = Menu.AimbotPanel:add_single_select("Target", {"Mouse", "Distance"}, 0);
@@ -270,6 +280,26 @@ do
     Menu.Elements.JumpPowerMode = Menu.CharacterPanel:add_single_select("Mode", {"Spoof", "Velocity"}, 0);
 
     Menu.Elements.JumpPowerValue = Menu.CharacterPanel:add_slider_int("Height", 1, 500, 100);
+
+    Menu.FriendsPanel = Menu.SettingsTab:create_panel("Friends", false);
+
+    Menu.Elements.FriendUsername = Menu.FriendsPanel:add_input_text("Username", "");
+
+    Menu.Buttons.FriendAdd = Menu.FriendsPanel:add_button("Add Friend", function()
+        local Username = Menu.Elements.FriendUsername:get();
+
+        if (Username ~= nil and Username ~= "") then
+            Game.Friends[string.lower(Username)] = true;
+        end;
+    end);
+
+    Menu.Buttons.FriendRemove = Menu.FriendsPanel:add_button("Remove Friend", function()
+        local Username = Menu.Elements.FriendUsername:get();
+
+        if (Username ~= nil and Username ~= "") then
+            Game.Friends[string.lower(Username)] = nil;
+        end;
+    end);
 end;
 
 -- @MEMORY
@@ -578,6 +608,12 @@ SDK.FindFirstChild = function(ObjectAddress, FromClass, Name)
     end;
 
     return nil;
+end;
+
+SDK.GetSensitivity = function(BaseAddress)
+    local SensitivityAddress = Memory.ReadFloat(BaseAddress + Game.Offsets.Sensitivity);
+    
+    return SensitivityAddress;
 end;
 
 SDK.GetVisualEngine = function(BaseAddress)
@@ -1076,7 +1112,7 @@ Functions.UpdateObjects = function()
             goto SkipPlayerData;
         end;
 
-        if ((not Menu.Cache.AimbotIgnoreTeam or (Menu.Cache.AimbotIgnoreTeam and TemporaryData.Team ~= Game.Cache.LocalTeam)) and TemporaryData.Distance < ClosestWorldDistance) then
+        if ((not Menu.Cache.AimbotIgnoreFriends or (Menu.Cache.AimbotIgnoreFriends and not Game.Friends[string.lower(TemporaryData.Name)])) and (not Menu.Cache.AimbotIgnoreTeam or (Menu.Cache.AimbotIgnoreTeam and TemporaryData.Team ~= Game.Cache.LocalTeam)) and TemporaryData.Distance < ClosestWorldDistance) then
             Game.Objects.ClosestWorldPlayer = Player;
 
             ClosestWorldDistance = TemporaryData.Distance;
@@ -1087,7 +1123,7 @@ Functions.UpdateObjects = function()
         if (TemporaryData.ScreenPosition ~= nil and TemporaryData.ScreenPosition ~= 0) then
             TemporaryData.ScreenDistance = SDK.GetScreenDistance(TemporaryData.ScreenPosition, vec2(MousePositionX, MousePositionY));
 
-            if ((not Menu.Cache.AimbotIgnoreTeam or (Menu.Cache.AimbotIgnoreTeam and TemporaryData.Team ~= Game.Cache.LocalTeam)) and TemporaryData.ScreenDistance ~= nil and TemporaryData.ScreenDistance < ClosestScreenDistance) then
+            if ((not Menu.Cache.AimbotIgnoreFriends or (Menu.Cache.AimbotIgnoreFriends and not Game.Friends[string.lower(TemporaryData.Name)])) and (not Menu.Cache.AimbotIgnoreTeam or (Menu.Cache.AimbotIgnoreTeam and TemporaryData.Team ~= Game.Cache.LocalTeam)) and TemporaryData.ScreenDistance ~= nil and TemporaryData.ScreenDistance < ClosestScreenDistance) then
                 Game.Objects.ClosestScreenPlayer = Player;
 
                 ClosestScreenDistance = TemporaryData.ScreenDistance;
@@ -1282,7 +1318,7 @@ Functions.UpdateCheat = function()
 
                 local BaseFOV = (Menu.Cache.AimbotFOV * 5);
 
-                if (not Menu.Cache.AimbotEnabledKeybind or Game.Aimbot.Target == 0) then
+                if (Game.Aimbot.Target == nil or Game.Aimbot.Target == 0 or not Game.Aimbot.Locked) then
                     if (Menu.Cache.AimbotTarget == 0) then
                         Game.Aimbot.Target = Game.Objects.ClosestScreenPlayer;
                     else
@@ -1290,7 +1326,15 @@ Functions.UpdateCheat = function()
                     end;
                 end;
 
+                local Sensitivity = SDK.GetSensitivity(Game.BaseAddress);
+
+                if (Sensitivity == nil or Sensitivity == 0) then
+                    goto SkipAimbot;
+                end;
+
                 if (Game.Aimbot.Target == nil or Game.Aimbot.Target == 0) then
+                    Game.Aimbot.Locked = false;
+
                     goto SkipAimbot;
                 end;
 
@@ -1298,12 +1342,16 @@ Functions.UpdateCheat = function()
 
                 if (PlayerData == nil or PlayerData == 0) then
                     Game.Aimbot.Target = 0;
+
+                    Game.Aimbot.Locked = false;
                     
                     goto SkipAimbot;
                 end;
 
                 if (PlayerData.Valid == nil or PlayerData.Valid == 0 or PlayerData.Valid == false) then
                     Game.Aimbot.Target = 0;
+
+                    Game.Aimbot.Locked = false;
                     
                     goto SkipAimbot;
                 end;
@@ -1313,6 +1361,8 @@ Functions.UpdateCheat = function()
 
                     if (Hitbox == nil or Hitbox == 0) then
                         Game.Aimbot.Target = 0;
+
+                        Game.Aimbot.Locked = false;
                         
                         goto SkipAimbot;
                     end;
@@ -1321,6 +1371,8 @@ Functions.UpdateCheat = function()
 
                     if (Position == nil or Position == 0) then
                         Game.Aimbot.Target = 0;
+
+                        Game.Aimbot.Locked = false;
                         
                         goto SkipAimbot;
                     end;
@@ -1329,6 +1381,8 @@ Functions.UpdateCheat = function()
 
                     if (ScreenPosition == nil or ScreenPosition == 0) then
                         Game.Aimbot.Target = 0;
+
+                        Game.Aimbot.Locked = false;
                         
                         goto SkipAimbot;
                     end;
@@ -1337,9 +1391,13 @@ Functions.UpdateCheat = function()
 
                     if (ScreenDistance == nil or ScreenDistance >= BaseFOV) then
                         Game.Aimbot.Target = 0;
+
+                        Game.Aimbot.Locked = false;
                         
                         goto SkipAimbot;
                     end;
+
+                    Game.Aimbot.Locked = true;
 
                     local DeltaX, DeltaY = (ScreenPosition.x - MousePositionX), (ScreenPosition.y - MousePositionY);
 
@@ -1347,11 +1405,15 @@ Functions.UpdateCheat = function()
                         goto SkipAimbot;
                     end;
 
-                    local LerpDistance = math.clamp(ScreenDistance / 500, 0.2, 1);
+                    local NormalizedDistance = math.clamp(ScreenDistance / BaseFOV, 0, 1);
 
-                    local LerpCurve = (LerpDistance ^ 0.6);
+                    local ExpotentialFactor = (1 - math.exp(-4 * NormalizedDistance));
 
-                    local LerpFactor = math.clamp((1 - BaseSmoothing) * LerpCurve, 0.06, 1);
+                    local StickinessBoost = ((1 - NormalizedDistance) ^ 2);
+
+                    local StickyFactor = math.clamp(ExpotentialFactor + (StickinessBoost * 0.5), 0, 1);
+
+                    local LerpFactor = math.clamp((1 - BaseSmoothing) * (Menu.Cache.AimbotSticky and StickyFactor or ExpotentialFactor), 0.05, 1);
 
                     local MoveX, MoveY = math.lerp(0, DeltaX, LerpFactor), math.lerp(0, DeltaY, LerpFactor);
 
@@ -1366,6 +1428,8 @@ Functions.UpdateCheat = function()
                     Game.Aimbot.ResidualY = ((Game.Aimbot.ResidualY - SendY) * 0.9);
 
                     input.simulate_mouse(SendX, SendY, 1);
+                else
+                    Game.Aimbot.Locked = false;
                 end;
 
                 Game.Aimbot.LastUpdate = winapi.get_tickcount64();
